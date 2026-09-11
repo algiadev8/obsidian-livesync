@@ -1,6 +1,7 @@
 import { REMOTE_P2P } from "@vrtmrz/livesync-commonlib/compat/common/models/setting.const";
 import type { Rebuilder } from "@vrtmrz/livesync-commonlib/compat/interfaces/DatabaseRebuilder";
 import { ServiceRebuilder, type ServiceRebuilderDependencies } from "@vrtmrz/livesync-commonlib/compat/serviceModules/Rebuilder";
+import { shouldBeIgnored } from "@vrtmrz/livesync-commonlib/compat/string_and_binary/path";
 import { DEFAULT_SETTINGS } from "@vrtmrz/livesync-commonlib/settings";
 import { LOG_LEVEL_NOTICE, LOG_LEVEL_VERBOSE } from "octagonal-wheels/common/logger";
 import { delay } from "octagonal-wheels/promises";
@@ -65,6 +66,14 @@ export class ServiceRebuilderObsidian extends ServiceRebuilder implements Rebuil
         let processed = 0;
         let failed = 0;
         for (const file of files) {
+            if (shouldBeIgnored(file.path)) {
+                this._log(`REBUILD STORAGE -> DB : ${file.path} has been skipped because it is ignored`, LOG_LEVEL_VERBOSE);
+                continue;
+            }
+            if (!(await services.vault.isTargetFile(file.path))) {
+                this._log(`REBUILD STORAGE -> DB : ${file.path} has been skipped because it is not a target file`, LOG_LEVEL_VERBOSE);
+                continue;
+            }
             if (services.vault.isFileSizeTooLarge(file.stat.size)) {
                 this._log(`REBUILD STORAGE -> DB : ${file.path} has been skipped due to file size exceeding the limit`, LOG_LEVEL_NOTICE);
                 continue;
