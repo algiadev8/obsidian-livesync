@@ -8,8 +8,12 @@ import { LOG_LEVEL_NOTICE, LOG_LEVEL_VERBOSE } from "octagonal-wheels/common/log
 import { delay } from "octagonal-wheels/promises";
 import { ServiceDatabaseFileAccess } from "./DatabaseFileAccess.ts";
 
+type ServiceRebuilderObsidianDependencies = ServiceRebuilderDependencies & {
+    databaseFileAccess: ServiceDatabaseFileAccess;
+};
+
 export class ServiceRebuilderObsidian extends ServiceRebuilder implements Rebuilder {
-    constructor(private readonly rebuildServices: ServiceRebuilderDependencies) {
+    constructor(private readonly rebuildServices: ServiceRebuilderObsidianDependencies) {
         super(rebuildServices);
     }
 
@@ -117,11 +121,7 @@ export class ServiceRebuilderObsidian extends ServiceRebuilder implements Rebuil
     }
 
     private async normaliseLocalDatabaseMetadataSizes(): Promise<void> {
-        const databaseFileAccess = this.rebuildServices.fileHandler.db;
-        if (!(databaseFileAccess instanceof ServiceDatabaseFileAccess)) {
-            this._log("Obsidian rebuild: metadata size normalisation was skipped because the database access service was not available.", LOG_LEVEL_NOTICE);
-            return;
-        }
+        const databaseFileAccess = this.rebuildServices.databaseFileAccess;
         const result = await databaseFileAccess.normaliseAllStoredMetadataSizes();
         this._log(
             `Obsidian rebuild: metadata size normalisation completed (${result.checked} checked, ${result.updated} updated).`,
@@ -132,10 +132,7 @@ export class ServiceRebuilderObsidian extends ServiceRebuilder implements Rebuil
 
     private async verifyLocalDatabaseMatchesStorage(): Promise<void> {
         const services = this.rebuildServices;
-        const databaseFileAccess = services.fileHandler.db;
-        if (!(databaseFileAccess instanceof ServiceDatabaseFileAccess)) {
-            throw new Error("The database access service was not available for rebuild verification.");
-        }
+        const databaseFileAccess = services.databaseFileAccess;
         const files = await services.storageAccess.getFiles();
         let checked = 0;
         let skipped = 0;
