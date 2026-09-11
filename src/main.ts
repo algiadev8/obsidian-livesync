@@ -14,7 +14,7 @@ import { ModuleObsidianGlobalHistory } from "./modules/features/ModuleGlobalHist
 import { LocalDatabaseMaintenance } from "./features/LocalDatabaseMainte/CmdLocalDatabaseMainte.ts";
 import type { InjectableServiceHub } from "@vrtmrz/livesync-commonlib/compat/services/implements/injectable/InjectableServiceHub";
 import { ObsidianServiceHub } from "./modules/services/ObsidianServiceHub.ts";
-import { ServiceRebuilder } from "@vrtmrz/livesync-commonlib/compat/serviceModules/Rebuilder";
+import { ServiceRebuilderObsidian } from "@/serviceModules/RebuilderObsidian.ts";
 import { ServiceDatabaseFileAccess } from "@/serviceModules/DatabaseFileAccess.ts";
 import { ServiceFileAccessObsidian } from "@/serviceModules/ServiceFileAccessImpl.ts";
 import { StorageAccessManager } from "@vrtmrz/livesync-commonlib/compat/managers/StorageProcessingManager";
@@ -110,7 +110,7 @@ export default class ObsidianLiveSyncPlugin extends Plugin {
             storageAccess: storageAccess,
             fileReflectionProvenance: createFileReflectionProvenance(services.keyValueDB),
         });
-        const rebuilder = new ServiceRebuilder({
+        const rebuilder = new ServiceRebuilderObsidian({
             events: services.context.events,
             API: services.API,
             database: services.database,
