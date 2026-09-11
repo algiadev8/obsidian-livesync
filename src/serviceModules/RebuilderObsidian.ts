@@ -1,4 +1,5 @@
 import { REMOTE_P2P } from "@vrtmrz/livesync-commonlib/compat/common/models/setting.const";
+import { isDocContentSame, readAsBlob } from "@vrtmrz/livesync-commonlib/compat/common/utils";
 import type { Rebuilder } from "@vrtmrz/livesync-commonlib/compat/interfaces/DatabaseRebuilder";
 import { ServiceRebuilder, type ServiceRebuilderDependencies } from "@vrtmrz/livesync-commonlib/compat/serviceModules/Rebuilder";
 import { shouldBeIgnored } from "@vrtmrz/livesync-commonlib/compat/string_and_binary/path";
@@ -36,6 +37,7 @@ export class ServiceRebuilderObsidian extends ServiceRebuilder implements Rebuil
         await delay(1000);
         await this.prepareLocalDatabaseFromStorage();
         await this.normaliseLocalDatabaseMetadataSizes();
+        await this.verifyLocalDatabaseMatchesStorage();
         if (services.setting.currentSettings().remoteType === REMOTE_P2P) {
             if (!(await this.completePreparedObsidianRebuild())) {
                 throw new Error("The local P2P rebuild could not be finalised.");
@@ -126,6 +128,43 @@ export class ServiceRebuilderObsidian extends ServiceRebuilder implements Rebuil
             LOG_LEVEL_NOTICE,
             "rebuild-storage-authoritative"
         );
+    }
+
+    private async verifyLocalDatabaseMatchesStorage(): Promise<void> {
+        const services = this.rebuildServices;
+        const databaseFileAccess = services.fileHandler.db;
+        if (!(databaseFileAccess instanceof ServiceDatabaseFileAccess)) {
+            throw new Error("The database access service was not available for rebuild verification.");
+        }
+        const files = await services.storageAccess.getFiles();
+        let checked = 0;
+        let skipped = 0;
+        const mismatched = [] as string[];
+        for (const file of files) {
+            if (shouldBeIgnored(file.path) || !(await services.vault.isTargetFile(file.path))) {
+                skipped++;
+                continue;
+            }
+            if (services.vault.isFileSizeTooLarge(file.stat.size)) {
+                skipped++;
+                continue;
+            }
+            const storageFile = await services.storageAccess.readStubContent(file);
+            const meta = await databaseFileAccess.fetchEntryMeta(file, undefined, true);
+            const loaded = meta ? await databaseFileAccess.fetchEntryFromMeta(meta, true, true) : false;
+            checked++;
+            if (!storageFile || !loaded || !(await isDocContentSame(storageFile.body, readAsBlob(loaded)))) {
+                mismatched.push(file.path);
+            }
+        }
+        this._log(
+            `Obsidian rebuild: storage/database verification completed (${checked} checked, ${skipped} skipped, ${mismatched.length} mismatched).`,
+            LOG_LEVEL_NOTICE,
+            "rebuild-storage-authoritative"
+        );
+        if (mismatched.length !== 0) {
+            throw new Error(`The rebuild was stopped because ${mismatched.length} local database document(s) did not match storage: ${mismatched.slice(0, 10).join(", ")}`);
+        }
     }
 
     private async completePreparedObsidianRebuild(): Promise<boolean> {
