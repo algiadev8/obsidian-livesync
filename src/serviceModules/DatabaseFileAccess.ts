@@ -1,5 +1,5 @@
 import type { DatabaseFileAccess } from "@vrtmrz/livesync-commonlib/compat/interfaces/DatabaseFileAccess";
-import type { UXFileInfo } from "@vrtmrz/livesync-commonlib/compat/common/types";
+import type { FilePathWithPrefix, UXFileInfo } from "@vrtmrz/livesync-commonlib/compat/common/types";
 import { readAsBlob } from "@vrtmrz/livesync-commonlib/compat/common/utils";
 import {
     ServiceDatabaseFileAccessBase,
@@ -54,6 +54,23 @@ export class ServiceDatabaseFileAccess extends ServiceDatabaseFileAccessBase imp
         return result;
     }
 
+    async normaliseAllStoredMetadataSizes(): Promise<{ checked: number; updated: number }> {
+        let checked = 0;
+        let updated = 0;
+        for await (const meta of this.databaseFileAccessServices.database.localDatabase.findAllNormalDocs({
+            conflicts: true,
+        })) {
+            if (meta.deleted || meta._deleted) {
+                continue;
+            }
+            checked++;
+            if (await this.normaliseStoredMetadataSizeByMeta(meta)) {
+                updated++;
+            }
+        }
+        return { checked, updated };
+    }
+
     override async storeAsConflictedRevision(
         file: UXFileInfo,
         currentRev: string,
@@ -88,21 +105,40 @@ export class ServiceDatabaseFileAccess extends ServiceDatabaseFileAccessBase imp
         if (!meta || meta.deleted) {
             return revision ?? "";
         }
+        const updated = await this.normaliseStoredMetadataSizeByMeta(meta);
+        if (!updated) {
+            return meta._rev;
+        }
+        const current = await this.fetchEntryMeta(file, undefined, true);
+        return current ? current._rev : meta._rev;
+    }
+
+    private async normaliseStoredMetadataSizeByMeta(meta: {
+        _id: string;
+        _rev: string;
+        path: FilePathWithPrefix;
+        size: number;
+        deleted?: boolean;
+        _deleted?: boolean;
+    }): Promise<boolean> {
+        if (meta.deleted || meta._deleted) {
+            return false;
+        }
         const loaded = await this.fetchEntryFromMeta(meta, true, true);
         if (!loaded) {
-            return revision ?? meta._rev;
+            return false;
         }
         const actualSize = readAsBlob(loaded).size;
         if (meta.size === actualSize) {
-            return meta._rev;
+            return false;
         }
         const raw = await this.databaseFileAccessServices.database.localDatabase.localDatabase.get(meta._id, {
             rev: meta._rev,
         });
-        const result = await this.databaseFileAccessServices.database.localDatabase.putRaw({
+        await this.databaseFileAccessServices.database.localDatabase.putRaw({
             ...raw,
             size: actualSize,
         });
-        return result.rev;
+        return true;
     }
 }

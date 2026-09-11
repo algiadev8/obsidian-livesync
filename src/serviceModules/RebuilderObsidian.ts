@@ -5,6 +5,7 @@ import { shouldBeIgnored } from "@vrtmrz/livesync-commonlib/compat/string_and_bi
 import { DEFAULT_SETTINGS } from "@vrtmrz/livesync-commonlib/settings";
 import { LOG_LEVEL_NOTICE, LOG_LEVEL_VERBOSE } from "octagonal-wheels/common/logger";
 import { delay } from "octagonal-wheels/promises";
+import { ServiceDatabaseFileAccess } from "./DatabaseFileAccess.ts";
 
 export class ServiceRebuilderObsidian extends ServiceRebuilder implements Rebuilder {
     constructor(private readonly rebuildServices: ServiceRebuilderDependencies) {
@@ -34,6 +35,7 @@ export class ServiceRebuilderObsidian extends ServiceRebuilder implements Rebuil
         await this.resetLocalDatabase();
         await delay(1000);
         await this.prepareLocalDatabaseFromStorage();
+        await this.normaliseLocalDatabaseMetadataSizes();
         if (services.setting.currentSettings().remoteType === REMOTE_P2P) {
             if (!(await this.completePreparedObsidianRebuild())) {
                 throw new Error("The local P2P rebuild could not be finalised.");
@@ -110,6 +112,20 @@ export class ServiceRebuilderObsidian extends ServiceRebuilder implements Rebuil
         if (!(await services.fileProcessing.commitPendingFileEvents())) {
             throw new Error("The current file-event batch could not be released for rebuild preparation.");
         }
+    }
+
+    private async normaliseLocalDatabaseMetadataSizes(): Promise<void> {
+        const databaseFileAccess = this.rebuildServices.fileHandler.db;
+        if (!(databaseFileAccess instanceof ServiceDatabaseFileAccess)) {
+            this._log("Obsidian rebuild: metadata size normalisation was skipped because the database access service was not available.", LOG_LEVEL_NOTICE);
+            return;
+        }
+        const result = await databaseFileAccess.normaliseAllStoredMetadataSizes();
+        this._log(
+            `Obsidian rebuild: metadata size normalisation completed (${result.checked} checked, ${result.updated} updated).`,
+            LOG_LEVEL_NOTICE,
+            "rebuild-storage-authoritative"
+        );
     }
 
     private async completePreparedObsidianRebuild(): Promise<boolean> {
