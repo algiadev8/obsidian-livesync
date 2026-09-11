@@ -62,20 +62,29 @@ export class ServiceRebuilderObsidian extends ServiceRebuilder implements Rebuil
         if (!services.database.isDatabaseReady()) {
             throw new Error("The selected local database is not ready for rebuild preparation.");
         }
+        this._log(
+            "Obsidian rebuild: forcing local database from storage files before remote overwrite.",
+            LOG_LEVEL_NOTICE,
+            "rebuild-storage-authoritative"
+        );
         const files = await services.storageAccess.getFiles();
         let processed = 0;
+        let skipped = 0;
         let failed = 0;
         for (const file of files) {
             if (shouldBeIgnored(file.path)) {
                 this._log(`REBUILD STORAGE -> DB : ${file.path} has been skipped because it is ignored`, LOG_LEVEL_VERBOSE);
+                skipped++;
                 continue;
             }
             if (!(await services.vault.isTargetFile(file.path))) {
                 this._log(`REBUILD STORAGE -> DB : ${file.path} has been skipped because it is not a target file`, LOG_LEVEL_VERBOSE);
+                skipped++;
                 continue;
             }
             if (services.vault.isFileSizeTooLarge(file.stat.size)) {
                 this._log(`REBUILD STORAGE -> DB : ${file.path} has been skipped due to file size exceeding the limit`, LOG_LEVEL_NOTICE);
+                skipped++;
                 continue;
             }
             if (!(await services.fileHandler.storeFileToDB(file, true))) {
@@ -87,6 +96,11 @@ export class ServiceRebuilderObsidian extends ServiceRebuilder implements Rebuil
                 this._log(`Processing: ${processed}/${files.length}`, LOG_LEVEL_NOTICE, "syncAll");
             }
         }
+        this._log(
+            `Obsidian rebuild: forced local database preparation completed (${processed} stored, ${skipped} skipped, ${failed} failed).`,
+            LOG_LEVEL_NOTICE,
+            "rebuild-storage-authoritative"
+        );
         if (failed !== 0) {
             throw new Error(`The Vault could not be scanned for rebuild preparation. ${failed} file(s) failed.`);
         }
